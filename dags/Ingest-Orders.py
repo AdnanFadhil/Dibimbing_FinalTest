@@ -17,7 +17,7 @@ dag = DAG(
     'Ingest-Orders',
     default_args=default_args,
     description='A DAG to ingest Parquet file into PostgreSQL',
-    schedule_interval=None,
+    schedule_interval='@yearly',
 )
 
 # Function to ingest Parquet file into a Pandas DataFrame

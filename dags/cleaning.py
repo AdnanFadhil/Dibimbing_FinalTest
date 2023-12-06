@@ -16,10 +16,9 @@ dag = DAG(
     'clean_and_transform_all_tables_dag',
     default_args=default_args,
     description='A DAG for cleaning and transforming all 9 tables',
-    schedule_interval=None,
+    schedule_interval='@yearly',
 )
 
-# Define SQL queries for cleaning and transforming
 clean_and_transform_customers_query = """
 -- Your SQL query for cleaning and transforming the customers table
 DELETE FROM customers
@@ -72,7 +71,6 @@ DELETE FROM review
 WHERE review_score IS NULL OR review_score < 1 OR review_score > 5;
 """
 
-# Define tasks
 clean_and_transform_customers_task = PostgresOperator(
     task_id='clean_and_transform_customers_task',
     postgres_conn_id='PostgresWarehouse',
@@ -87,7 +85,6 @@ clean_and_transform_orders_task = PostgresOperator(
     dag=dag,
 )
 
-# Add more tasks for other tables
 
 clean_and_transform_order_items_task = PostgresOperator(
     task_id='clean_and_transform_order_items_task',
@@ -124,12 +121,7 @@ clean_and_transform_reviews_task = PostgresOperator(
     dag=dag,
 )
 
-# Set task dependencies
 clean_and_transform_order_items_task >> clean_and_transform_reviews_task
 clean_and_transform_product_categories_task >> clean_and_transform_reviews_task
 clean_and_transform_geolocation_data_task >> clean_and_transform_orders_task
-clean_and_transform_reviews_task >> []  # Add dependencies for other tables
-
-
-
-# Continue the pattern for additional cleaning and transformation steps
+clean_and_transform_reviews_task >> []  

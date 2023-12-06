@@ -16,10 +16,9 @@ dag = DAG(
     'create_dimension_tables_dag',
     default_args=default_args,
     description='A DAG for creating dimension tables',
-    schedule_interval=None,
+    schedule_interval='@yearly',
 )
 
-# Define SQL queries for creating dimension tables with existence checks
 create_item_delivered_dimension_query = """
 CREATE TABLE IF NOT EXISTS item_delivered_dimension AS
 SELECT
@@ -91,7 +90,6 @@ GROUP BY
     c.customer_id, c.customer_unique_id;
 """
 
-# Define tasks for creating dimension tables
 create_item_delivered_dimension_task = PostgresOperator(
     task_id='create_item_delivered_dimension_task',
     postgres_conn_id='PostgresWarehouse',
@@ -120,5 +118,4 @@ create_customer_payment_dimension_task = PostgresOperator(
     dag=dag,
 )
 
-# Set task dependencies
 create_item_delivered_dimension_task >> [create_product_dimension_task, create_review_dimension_task, create_customer_payment_dimension_task]

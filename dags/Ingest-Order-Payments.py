@@ -17,12 +17,12 @@ dag = DAG(
     'Ingest-Order-Payment',
     default_args=default_args,
     description='A DAG to ingest Avro file into PostgreSQL',
-    schedule_interval=None,
+    schedule_interval='@yearly',
 )
 
-# Function to ingest Avro file into a Pandas DataFrame
+
 def ingest_avro(**kwargs):
-    avro_file_path = '/opt/airflow/data/olist_order_payments_dataset.avro'  # Update with your Avro file path
+    avro_file_path = '/opt/airflow/data/olist_order_payments_dataset.avro' 
     table_name = 'order_payment_avro'
 
     # Read Avro file into a Pandas DataFrame
@@ -33,20 +33,14 @@ def ingest_avro(**kwargs):
     table_df = pd.DataFrame(avro_data)
     return table_df
 
-# Function to insert data into PostgreSQL table
+
 def insert_avro_postgres(**kwargs):
     ti = kwargs['ti']
-    df = ti.xcom_pull(task_ids='ingest_avro')  # Retrieve the DataFrame from the output of 'ingest_avro' task
-
-    # Assuming the PostgreSQL connection ID is 'your_postgres_conn_id'
+    df = ti.xcom_pull(task_ids='ingest_avro') 
     engine = create_engine('postgresql+psycopg2://user:password@dataeng-warehouse-postgres:5432/data_warehouse')
-
-    # Replace 'your_table_name' with the actual table name in PostgreSQL
     table_name = 'order_payment'
-
     df.to_sql(table_name, con=engine, index=False, if_exists='replace')
 
-# Task to ingest Avro file
 ingest_task = PythonOperator(
     task_id='ingest_avro',
     python_callable=ingest_avro,
@@ -54,7 +48,6 @@ ingest_task = PythonOperator(
     dag=dag,
 )
 
-# Task to create PostgreSQL table (optional if table already exists)
 create_table_task = PostgresOperator(
     task_id='create_table',
     sql=f"""
@@ -67,12 +60,11 @@ create_table_task = PostgresOperator(
             
         );
     """,
-    postgres_conn_id='PostgresWarehouse',  # Update with your PostgreSQL connection ID
+    postgres_conn_id='PostgresWarehouse',
     autocommit=True,
     dag=dag,
 )
 
-# Task to insert data into PostgreSQL table
 insert_avro_table_task = PythonOperator(
     task_id='insert_avro_table',
     python_callable=insert_avro_postgres,
@@ -80,5 +72,4 @@ insert_avro_table_task = PythonOperator(
     dag=dag,
 )
 
-# Define the task dependencies
 ingest_task >> create_table_task >> insert_avro_table_task

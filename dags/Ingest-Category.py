@@ -1,4 +1,5 @@
 from airflow import DAG
+from datetime import datetime, timedelta
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.operators.python import PythonOperator
 from datetime import datetime
@@ -10,35 +11,30 @@ default_args = {
     'owner': 'Adnan',
     'start_date': datetime(2023, 1, 1),
     'retries': 1,
+    'retry_delay': timedelta(seconds=5),
 }
 
 dag = DAG(
     'Ingest-Category',
     default_args=default_args,
     description='A DAG to ingest Excel file into PostgreSQL',
-    schedule_interval=None,
+    schedule_interval='@yearly',
 )
 
-# Function to ingest Excel file into a Pandas DataFrame
 def ingest_xlsx(**kwargs):
-    xlsx_file_path = os.path.join('/opt/airflow/data/product_category_name_translation.xlsx')  # Update with your Excel file name
+    xlsx_file_path = os.path.join('/opt/airflow/data/product_category_name_translation.xlsx')  
     df = pd.read_excel(xlsx_file_path)
     return df
 
-# Function to insert data into PostgreSQL table
 def insert_xlsx_postgres(**kwargs):
     ti = kwargs['ti']
-    df = ti.xcom_pull(task_ids='ingest_xlsx')  # Retrieve the DataFrame from the output of 'ingest_xlsx' task
-
-    # Assuming the PostgreSQL connection ID is 'your_postgres_conn_id'
+    df = ti.xcom_pull(task_ids='ingest_xlsx')  
     engine = create_engine('postgresql+psycopg2://user:password@dataeng-warehouse-postgres:5432/data_warehouse')
 
-    # Replace 'your_table_name' with the actual table name in PostgreSQL
     table_name = 'product_categories'
 
     df.to_sql(table_name, con=engine, index=False, if_exists='replace')
 
-# Task to ingest Excel file
 ingest_task = PythonOperator(
     task_id='ingest_xlsx',
     python_callable=ingest_xlsx,
@@ -46,21 +42,19 @@ ingest_task = PythonOperator(
     dag=dag,
 )
 
-# Task to create PostgreSQL table (optional if table already exists)
 create_table_task = PostgresOperator(
     task_id='create_table',
-    sql="""CREATE TABLE product_categories (
+    sql="""CREATE TABLE IF NOT EXISTS product_categories (
     category_id SERIAL PRIMARY KEY,
     category_name VARCHAR(255) NOT NULL,
     category_name_english VARCHAR(255) NOT NULL
     );
     """,
-    postgres_conn_id='PostgresWarehouse',  # Update with your PostgreSQL connection ID
+    postgres_conn_id='PostgresWarehouse',  
     autocommit=True,
     dag=dag,
 )
 
-# Task to insert data into PostgreSQL table
 insert_xlsx_table_task = PythonOperator(
     task_id='insert_xlsx_table',
     python_callable=insert_xlsx_postgres,
@@ -68,5 +62,4 @@ insert_xlsx_table_task = PythonOperator(
     dag=dag,
 )
 
-# Define the task dependencies
 ingest_task >> create_table_task >> insert_xlsx_table_task
