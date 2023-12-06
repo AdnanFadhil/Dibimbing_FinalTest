@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.empty import EmptyOperator
-from airflow.models import Connection
 from airflow.operators.python import PythonOperator
+from airflow.models import Connection
 from airflow.hooks.base import BaseHook
+from sqlalchemy.orm import sessionmaker
+from airflow.utils.db import provide_session
 
 default_args = {
     'owner': 'Adnan',
@@ -12,18 +13,18 @@ default_args = {
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retry_delay': timedelta(seconds=5),
 }
 
 dag = DAG(
     'create_connection_dag',
     default_args=default_args,
-    description='A DAG for creating a connection',
+    description='A DAG for creating or updating a connection',
     schedule_interval=None,
 )
 
-def create_postgres_connection_func(**kwargs):
-    # Define the connection parameters
+@provide_session
+def create_postgres_connection_func(session=None, **kwargs):
     conn_id = 'PostgresWarehouse'
     conn_type = 'postgres'
     host = 'dataeng-warehouse-postgres'
@@ -32,26 +33,14 @@ def create_postgres_connection_func(**kwargs):
     password = 'password'
     port = 5432
 
-    # Check if the connection already exists
-    existing_conn = BaseHook.get_connection(conn_id)
+    try:
+        # Try to get the existing connection
+        existing_conn = BaseHook.get_connection(conn_id)
+        print(f"Connection {conn_id} already exists.")
+    except Exception as e:
+        # Connection does not exist, create a new connection
+        print(f"Connection {conn_id} does not exist. Creating...")
 
-    if existing_conn:
-        # Update the connection if parameters are different
-        if (
-            existing_conn.host != host
-            or existing_conn.schema != database
-            or existing_conn.login != user
-            or existing_conn.password != password
-            or existing_conn.port != port
-        ):
-            existing_conn.host = host
-            existing_conn.schema = database
-            existing_conn.login = user
-            existing_conn.password = password
-            existing_conn.port = port
-            existing_conn.update()
-    else:
-        # Create a new connection
         conn = Connection(
             conn_id=conn_id,
             conn_type=conn_type,
@@ -63,11 +52,10 @@ def create_postgres_connection_func(**kwargs):
         )
 
         # Add the connection to the metadata database
-        session = kwargs['session']
         session.add(conn)
         session.commit()
+        print(f"Connection {conn_id} created.")
 
-# Define tasks
 create_postgres_connection_task = PythonOperator(
     task_id='create_postgres_connection_task',
     python_callable=create_postgres_connection_func,
@@ -75,10 +63,4 @@ create_postgres_connection_task = PythonOperator(
     dag=dag,
 )
 
-end_task = EmptyOperator(
-    task_id='end_task',
-    dag=dag,
-)
-
-# Set task dependencies
-create_postgres_connection_task >> end_task
+create_postgres_connection_task
