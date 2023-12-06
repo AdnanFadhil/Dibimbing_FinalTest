@@ -1,0 +1,10 @@
+pandas==2.1.0
+openpyxl
+fastparquet==0.8.2
+fastavro==1.4.6
+avro-python3==1.10.2
+pyarrow==5.0.0
+psycopg2-binary==2.9.1
+xlrd==1.2.0
+
+
