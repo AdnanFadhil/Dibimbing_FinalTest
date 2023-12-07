@@ -31,6 +31,7 @@ SELECT
     c.customer_city,
     c.customer_state,
     oi.price AS item_price,
+    EXTRACT(YEAR FROM o.order_delivered_customer_date::timestamp) AS year_only,
     CASE
         WHEN o.order_status = 'delivered' THEN 'yes'
         ELSE 'no'
@@ -41,6 +42,21 @@ JOIN
     orders o ON oi.order_id = o.order_id
 JOIN
     customers c ON o.customer_id = c.customer_id;
+"""
+
+# Add query for creating the yearly table
+create_yearly_table_query = """
+CREATE TABLE IF NOT EXISTS year (
+  order_delivered_customer_date TIMESTAMP,
+  year_only INT
+);
+
+INSERT INTO year (order_delivered_customer_date, year_only)
+SELECT
+  order_delivered_customer_date,
+  EXTRACT(YEAR FROM order_delivered_customer_date::timestamp) AS year_only
+FROM
+  orders;
 """
 
 create_product_dimension_query = """
@@ -90,6 +106,13 @@ GROUP BY
     c.customer_id, c.customer_unique_id;
 """
 
+create_yearly_table_task = PostgresOperator(
+    task_id='create_yearly_table_task',
+    postgres_conn_id='PostgresWarehouse',
+    sql=create_yearly_table_query,
+    dag=dag,
+)
+
 create_item_delivered_dimension_task = PostgresOperator(
     task_id='create_item_delivered_dimension_task',
     postgres_conn_id='PostgresWarehouse',
@@ -118,4 +141,5 @@ create_customer_payment_dimension_task = PostgresOperator(
     dag=dag,
 )
 
-create_item_delivered_dimension_task >> [create_product_dimension_task, create_review_dimension_task, create_customer_payment_dimension_task]
+# Set task dependencies
+create_yearly_table_task >> create_item_delivered_dimension_task >> [create_product_dimension_task, create_review_dimension_task, create_customer_payment_dimension_task]
