@@ -1,82 +1,94 @@
 from airflow import DAG
-from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.operators.python import PythonOperator
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
-import os
-from sqlalchemy import create_engine
 import json
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from sqlalchemy import create_engine
 
+# Set up PostgreSQL connection parameters
+conn_id = "PostgresWarehouse"
+
+# Define your DAG
 default_args = {
-    'owner': 'Adnan',
+    'owner': 'airflow',
+    'depends_on_past': False,
     'start_date': datetime(2023, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
     'retries': 1,
+    'retry_delay': timedelta(minutes=3),
 }
 
 dag = DAG(
-    'Ingest-Json-Login-Attempts',
+    'extract_load_login_attempts_to_postgres',
     default_args=default_args,
-    description='A simple DAG to ingest JSON files into PostgreSQL',
-    schedule_interval='@yearly',
+    description='Extract and load login attempts data to PostgreSQL',
+    schedule_interval=None,  # Adjust as needed
+    catchup=False,
 )
 
-data_folder = '/opt/airflow/data'
-json_files = ['login_attempts_0.json', 'login_attempts_1.json', 'login_attempts_2.json','login_attempts_3.json','login_attempts_4.json','login_attempts_5.json','login_attempts_6.json','login_attempts_7.json','login_attempts_8.json','login_attempts_9.json']  # Add more JSON files as needed
+# Define the extract and load task
+def extract_and_load_login_attempts_to_postgres(**kwargs):
+    file_paths = [
+        '/opt/airflow/data/login_attempts_0.json',
+        '/opt/airflow/data/login_attempts_1.json',
+        '/opt/airflow/data/login_attempts_2.json',
+        '/opt/airflow/data/login_attempts_3.json',
+        '/opt/airflow/data/login_attempts_4.json',
+        '/opt/airflow/data/login_attempts_5.json',
+        '/opt/airflow/data/login_attempts_6.json',
+        '/opt/airflow/data/login_attempts_7.json',
+        '/opt/airflow/data/login_attempts_8.json',
+        '/opt/airflow/data/login_attempts_9.json',
+    ]
+    
+    data_frames = []
+    
+    for file_path in file_paths:
+        with open(file_path, 'r') as file:
+            file_data = json.load(file)
+            data_frames.append(pd.DataFrame(file_data))
+    
+    combined_data = pd.concat(data_frames)
+    
+    table_name = "login_attempts_history"
+    table_schema = "id INTEGER PRIMARY KEY, customer_id INTEGER, login_success BOOLEAN, attempted_at TIMESTAMP"
+    
+    # Create table in PostgreSQL using the specified connection
+    create_table_in_postgres_with_connection(conn_id, table_name, table_schema)
+    
+    # Load data into PostgreSQL using the specified connection
+    load_data_to_postgres_with_connection(conn_id, table_name, combined_data)
 
-def ingest_json(file_name, **kwargs):
-    json_file_path = os.path.join(data_folder, file_name)
-    with open(json_file_path, 'r') as file:
-        data = json.load(file)
-    df = pd.json_normalize(data)
-    return df
+def create_table_in_postgres_with_connection(conn_id, table_name, table_schema):
+    postgres_hook = PostgresHook(postgres_conn_id=conn_id)
+    connection = postgres_hook.get_conn()
+    cursor = connection.cursor()
 
-def insert_into_postgres(**kwargs):
-    ti = kwargs['ti']
-    df_list = ti.xcom_pull(task_ids=[f'ingest_json_{json_file}' for json_file in json_files])
+    try:
+        create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({table_schema})"
+        cursor.execute(create_table_query)
+        connection.commit()
+    finally:
+        cursor.close()
+        connection.close()
 
-    # Concatenate or merge all dataframes into a single dataframe
-    combined_df = pd.concat(df_list, ignore_index=True)  # or df = pd.concat(df, axis=1) for merging along columns
+def load_data_to_postgres_with_connection(conn_id, table_name, data_frame):
+    postgres_hook = PostgresHook(postgres_conn_id=conn_id)
+    connection_info = postgres_hook.get_connection(conn_id)
 
-    # Modify the connection string based on your PostgreSQL setup
-    engine = create_engine('postgresql+psycopg2://user:password@dataeng-warehouse-postgres:5432/data_warehouse')
+    engine_uri = f"postgresql+psycopg2://{connection_info.login}:{connection_info.password}@{connection_info.host}:{connection_info.port}/{connection_info.schema}"
+    engine = create_engine(engine_uri)
+    
+    data_frame.to_sql(table_name, engine, if_exists='replace', index=False)
 
-    # Use a single table name for all merged data
-    table_name = 'login_attempts'
-
-    combined_df.to_sql(table_name, con=engine, index=False, if_exists='replace')  # Change 'replace' to 'append' if needed # Change 'replace' to 'append' if needed
-
-ingest_tasks = []
-insert_task = PythonOperator(
-    task_id='insert_into_table',
-    python_callable=insert_into_postgres,
+extract_and_load_task = PythonOperator(
+    task_id='extract_and_load_login_attempts_task',
+    python_callable=extract_and_load_login_attempts_to_postgres,
     provide_context=True,
     dag=dag,
 )
 
-for json_file in json_files:
-    ingest_task = PythonOperator(
-        task_id=f'ingest_json_{json_file}',
-        python_callable=ingest_json,
-        op_args=[json_file],
-        provide_context=True,
-        dag=dag,
-    )
-    ingest_task >> insert_task
-    ingest_tasks.append(ingest_task)
-
-create_table_task = PostgresOperator(
-    task_id='create_table',
-    sql='''
-    CREATE TABLE IF NOT EXISTS login_attempts (
-        id INT,
-        customer_id INT,
-        login_successful BOOLEAN,
-        attempted_at TIMESTAMP
-    );
-    ''',
-    postgres_conn_id='PostgresWarehouse',
-    autocommit=True,
-    dag=dag,
-)
-
-create_table_task >> ingest_tasks
+if __name__ == "__main__":
+    dag.cli()
