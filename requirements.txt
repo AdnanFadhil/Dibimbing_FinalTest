@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 pandas==2.1.0
 openpyxl
 fastparquet==0.8.2
@@ -9,14 +8,3 @@ psycopg2-binary==2.9.1
 xlrd>=2.0.1
 python-snappy==0.6.
 
-=======
-pandas==2.1.0
-openpyxl
-fastparquet==0.8.2
-fastavro==1.4.6
-avro-python3==1.10.2
-pyarrow==5.0.0
-psycopg2-binary==2.9.1
-xlrd==1.2.0
-python-snappy==0.6.0
->>>>>>> 5bd57a82886912143aa9cee9d3dc1b282d324361
