@@ -52,6 +52,9 @@ def extract_and_load_login_attempts_to_postgres(**kwargs):
     
     combined_data = pd.concat(data_frames)
     
+    # Convert 'attempted_at' to timestamp
+    combined_data['attempted_at'] = pd.to_datetime(combined_data['attempted_at'], unit='ms')
+    
     table_name = "login_attempts_history"
     table_schema = "id INTEGER PRIMARY KEY, customer_id INTEGER, login_success BOOLEAN, attempted_at TIMESTAMP"
     

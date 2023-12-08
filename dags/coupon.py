@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.operators.python import PythonOperator
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 import pandas as pd
 import os
@@ -11,6 +11,7 @@ default_args = {
     'owner': 'Adnan',
     'start_date': datetime(2023, 1, 1),
     'retries': 1,
+    'retry_delay': timedelta(minutes=1),
 }
 
 dag = DAG(
@@ -20,13 +21,19 @@ dag = DAG(
     schedule_interval='@yearly',
 )
 
+# ... (your other imports and default_args remain unchanged)
+
 def ingest_json(**kwargs):
     data_folder = '/opt/airflow/data'
     json_file_path = os.path.join(data_folder, 'coupons.json')  
     with open(json_file_path, 'r') as json_file:
         data = json.load(json_file)
-    df = pd.json_normalize(data)
+    
+    # Create a DataFrame directly from the JSON data
+    df = pd.DataFrame(data)
+    
     return df
+
 
 def insert_json_postgres(**kwargs):
     ti = kwargs['ti']
@@ -52,7 +59,7 @@ create_table_task = PostgresOperator(
             discount_percent INT
         );
     """,
-    postgres_conn_id='PostgresWarehouse',  
+    postgres_conn_id='PostgresWarehouse',
     autocommit=True,
     dag=dag,
 )

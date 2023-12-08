@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 
 # Define the DAG
 dag = DAG(
-    dag_id="extract_and_load_xls_to_postgres",
+    dag_id="extract_and_load_customers_to_postgres",
     start_date=datetime(2023, 1, 1),
     schedule_interval="@daily",
     catchup=False
